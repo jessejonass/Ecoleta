@@ -2,9 +2,8 @@ import { Request, Response } from 'express';
 import knex from '../database/connection';
 
 class PointController {
-  // Listar ponto de coleta filtrado
+
   async index(request: Request, response: Response){
-    // Cidade, UF e Items (query params)
     const { city, uf, items } = request.query;
 
     const parsedItems = String(items)
@@ -20,7 +19,17 @@ class PointController {
       .distinct()
       .select('points.*');
 
-    return response.json(points);
+    // Serialização para gerar url - mobile
+    const serializedPoints = points.map(point => {
+      return {
+        // Tudo que ja tinha em points + 
+        ...point,
+        image_url: `http://192.168.0.12:3333/uploads/${point.image}`
+      };
+    });
+
+    // Retornando o points serializado com url
+    return response.json(serializedPoints);
   }
 
   async show(request: Request, response: Response){
@@ -37,7 +46,14 @@ class PointController {
       .where('point_items.point_id', '=', id)
       .select('items.title');
 
-    return response.json({ point, items })
+    // Serialização para gerar url - mobile
+    const serializedPoint = {
+      // Tudo que ja tinha em points + 
+      ...point,
+      image_url: `http://192.168.0.12:3333/uploads/${point.image}`
+    };
+
+    return response.json({ point: serializedPoint, items })
   }
 
   async create(request: Request, response: Response){
@@ -53,9 +69,10 @@ class PointController {
     } = request.body;
   
     const trx = await knex.transaction();
-  
+    
+    // Nome da imagem definido no form
     const point = {
-      image: 'https://cdn.pixabay.com/photo/2012/02/28/00/39/freight-17666_960_720.jpg',
+      image: request.file.filename,
       name,
       email,
       whatsapp,
@@ -69,12 +86,16 @@ class PointController {
   
     const point_id = insertedIds[0];
   
-    // Percorrer o array de items do body
-    const pointItems = items.map((item_id: number) => {
-      return {
-        item_id,
-        point_id: point_id
-      }
+    // Percorrer o array de items do body - multpart form
+    // Remover s vírgulas
+    const pointItems = items
+      .split(',')
+      .map((item: string) => Number(item.trim()))
+      .map((item_id: number) => {
+        return {
+          item_id,
+          point_id: point_id
+        }
     });
   
     // Inserir na tabela point_items os itens recebidos do body
